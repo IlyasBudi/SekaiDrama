@@ -76,3 +76,5 @@ src/
 ├── types/                  # TypeScript interfaces & types definitions
 └── styles/                 # Global CSS & Tailwind configuration
 ```
+
+**Made by [Sansekai](https://github.com/Sansekai)**
