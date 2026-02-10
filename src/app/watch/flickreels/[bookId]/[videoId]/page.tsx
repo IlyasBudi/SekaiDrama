@@ -146,7 +146,8 @@ export default function FlickReelsWatchPage() {
   };
 
   // Handle hold to speed up (2x)
-  const handleHoldStart = () => {
+  const handleHoldStart = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault(); // Prevent context menu on long press
     if (!videoRef.current) return;
     
     isHoldingRef.current = true;
@@ -157,7 +158,8 @@ export default function FlickReelsWatchPage() {
     }
   };
 
-  const handleHoldEnd = () => {
+  const handleHoldEnd = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
     if (!videoRef.current) return;
     
     isHoldingRef.current = false;
@@ -170,6 +172,12 @@ export default function FlickReelsWatchPage() {
     
     // Mark when hold ended to prevent immediate click
     holdEndTimeRef.current = Date.now();
+  };
+
+  // Prevent context menu (download popup) on video
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    return false;
   };
 
   // Handle double-click to skip forward/backward
@@ -286,6 +294,7 @@ export default function FlickReelsWatchPage() {
                 "w-full h-full object-contain max-h-[100dvh]",
                 (!currentEpisodeData || !videoReady) && "invisible"
               )}
+              style={{ touchAction: 'manipulation' }}
               poster={currentEpisodeData?.raw?.chapter_cover}
               onEnded={handleVideoEnded}
               onError={async (e) => {
@@ -303,6 +312,7 @@ export default function FlickReelsWatchPage() {
               onMouseLeave={handleHoldEnd}
               onTouchStart={handleHoldStart}
               onTouchEnd={handleHoldEnd}
+              onContextMenu={handleContextMenu}
             />
             {/* Loading overlay */}
             {(!currentEpisodeData || !videoReady) && (
