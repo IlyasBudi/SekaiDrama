@@ -31,6 +31,8 @@ export default function FlickReelsWatchPage() {
   const isHoldingRef = useRef(false);
   const wasPlayingBeforeHold = useRef(false);
   const holdEndTimeRef = useRef(0);
+  const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const touchStartTimeRef = useRef(0);
 
   const { data, isLoading, error, refetch } = useFlickReelsDetail(bookId);
 
@@ -124,6 +126,15 @@ export default function FlickReelsWatchPage() {
     }
   }, [videoReady, currentEpisodeData?.raw?.videoUrl]);
 
+  // Cleanup hold timer on unmount
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current) {
+        clearTimeout(holdTimerRef.current);
+      }
+    };
+  }, []);
+
   // Handlers
   const handleEpisodeChange = (episodeId: string, preserveFullscreen = false) => {
     setActiveVideoId(episodeId);
@@ -147,43 +158,67 @@ export default function FlickReelsWatchPage() {
 
   // Handle hold to speed up (2x)
   const handleHoldStart = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault(); // Prevent context menu on long press
     if (!videoRef.current) return;
     
-    isHoldingRef.current = true;
-    wasPlayingBeforeHold.current = !videoRef.current.paused;
+    // Track touch start time
+    touchStartTimeRef.current = Date.now();
     
-    if (wasPlayingBeforeHold.current) {
-      videoRef.current.playbackRate = 2;
+    // Clear any existing timer
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
     }
+    
+    // Set timer to activate hold after 200ms
+    holdTimerRef.current = setTimeout(() => {
+      if (!videoRef.current) return;
+      
+      isHoldingRef.current = true;
+      wasPlayingBeforeHold.current = !videoRef.current.paused;
+      
+      if (wasPlayingBeforeHold.current) {
+        videoRef.current.playbackRate = 2;
+      }
+    }, 200);
   };
 
   const handleHoldEnd = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
     if (!videoRef.current) return;
     
-    isHoldingRef.current = false;
-    videoRef.current.playbackRate = 1;
-    
-    // Ensure video continues playing if it was playing before hold
-    if (wasPlayingBeforeHold.current && videoRef.current.paused) {
-      videoRef.current.play().catch(() => {});
+    // Clear timer if released before hold activates
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
     }
     
-    // Mark when hold ended to prevent immediate click
-    holdEndTimeRef.current = Date.now();
+    // Only handle if we were actually holding
+    if (isHoldingRef.current) {
+      isHoldingRef.current = false;
+      videoRef.current.playbackRate = 1;
+      
+      // Ensure video continues playing if it was playing before hold
+      if (wasPlayingBeforeHold.current && videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+      }
+      
+      // Mark when hold ended to prevent immediate click
+      holdEndTimeRef.current = Date.now();
+    }
   };
 
-  // Prevent context menu (download popup) on video
+  // Prevent context menu (download popup) on video - only for long press
   const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    return false;
+    // Only prevent if this was a touch long press (> 500ms hold)
+    const holdDuration = Date.now() - touchStartTimeRef.current;
+    if (holdDuration > 500 || isHoldingRef.current) {
+      e.preventDefault();
+      return false;
+    }
   };
 
   // Handle double-click to skip forward/backward
   const handleVideoClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Ignore click immediately after hold release (within 200ms)
-    if (Date.now() - holdEndTimeRef.current < 200) {
+    // Ignore click if we were holding (released within last 300ms)
+    if (Date.now() - holdEndTimeRef.current < 300 && holdEndTimeRef.current > 0) {
       return;
     }
     
@@ -197,8 +232,8 @@ export default function FlickReelsWatchPage() {
     const now = Date.now();
     const timeSinceLastClick = now - lastClickTimeRef.current;
 
-    // Double-click detected (within 300ms and same side)
-    if (timeSinceLastClick < 300 && timeSinceLastClick > 0 && lastClickSideRef.current === side) {
+    // Double-click detected (within 400ms and same side)
+    if (timeSinceLastClick < 400 && timeSinceLastClick > 0 && lastClickSideRef.current === side) {
       e.preventDefault();
       e.stopPropagation();
       
@@ -294,7 +329,6 @@ export default function FlickReelsWatchPage() {
                 "w-full h-full object-contain max-h-[100dvh]",
                 (!currentEpisodeData || !videoReady) && "invisible"
               )}
-              style={{ touchAction: 'manipulation' }}
               poster={currentEpisodeData?.raw?.chapter_cover}
               onEnded={handleVideoEnded}
               onError={async (e) => {
@@ -307,9 +341,6 @@ export default function FlickReelsWatchPage() {
               }}
               // @ts-ignore
               referrerPolicy="no-referrer"
-              onMouseDown={handleHoldStart}
-              onMouseUp={handleHoldEnd}
-              onMouseLeave={handleHoldEnd}
               onTouchStart={handleHoldStart}
               onTouchEnd={handleHoldEnd}
               onContextMenu={handleContextMenu}
