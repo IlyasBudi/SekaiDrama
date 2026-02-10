@@ -276,11 +276,6 @@ export default function FlickReelsWatchPage() {
          <div 
            className="relative w-full h-full flex items-center justify-center"
            onClick={handleVideoClick}
-           onMouseDown={handleHoldStart}
-           onMouseUp={handleHoldEnd}
-           onMouseLeave={handleHoldEnd}
-           onTouchStart={handleHoldStart}
-           onTouchEnd={handleHoldEnd}
          >
             {/* Always render video element to preserve fullscreen state */}
             <video
@@ -303,6 +298,11 @@ export default function FlickReelsWatchPage() {
               }}
               // @ts-ignore
               referrerPolicy="no-referrer"
+              onMouseDown={handleHoldStart}
+              onMouseUp={handleHoldEnd}
+              onMouseLeave={handleHoldEnd}
+              onTouchStart={handleHoldStart}
+              onTouchEnd={handleHoldEnd}
             />
             {/* Loading overlay */}
             {(!currentEpisodeData || !videoReady) && (
