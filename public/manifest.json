@@ -2,7 +2,7 @@
   "name": "SekaiDrama - Streaming Drama Pendek",
   "short_name": "SekaiDrama",
   "description": "Nonton drama pendek gratis dan tanpa iklan di SekaiDrama.",
-  "theme_color": "#8b5cf6",
+  "theme_color": "#000000",
   "background_color": "#0a0a0a",
   "display": "standalone",
   "orientation": "portrait",
