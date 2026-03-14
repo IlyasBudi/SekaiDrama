@@ -17,6 +17,7 @@ export default function NetShortWatchPage() {
   const [showEpisodeList, setShowEpisodeList] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const holdRateRestoreRef = useRef<number>(1);
   
   // Debug log state (kept internal for now, can be exposed if needed)
   const [debugLog, setDebugLog] = useState<string[]>([]);
@@ -131,6 +132,22 @@ export default function NetShortWatchPage() {
   };
 
   const totalEpisodes = data?.totalEpisodes || 1;
+
+  // Hold-to-speed control: keep 2x only while press is held.
+  const handleHoldStart = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    holdRateRestoreRef.current = video.playbackRate || 1;
+    video.playbackRate = 2;
+  }, []);
+
+  const handleHoldEnd = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.playbackRate = holdRateRestoreRef.current || 1;
+  }, []);
 
   // Manual Subtitle Injection & Enforcement
   useEffect(() => {
@@ -287,6 +304,11 @@ export default function NetShortWatchPage() {
               crossOrigin="anonymous"
               {...({ disableRemotePlayback: true, referrerPolicy: "no-referrer" } as any)}
               onEnded={handleVideoEnded}
+              onPointerDown={handleHoldStart}
+              onPointerUp={handleHoldEnd}
+              onPointerLeave={handleHoldEnd}
+              onPointerCancel={handleHoldEnd}
+              onContextMenu={(e) => e.preventDefault()}
             />
          </div>
 
