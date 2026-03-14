@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, type MouseEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useMeloloDetail, useMeloloStream } from "@/hooks/useMelolo";
 import { ChevronLeft, ChevronRight, Loader2, List, AlertCircle, Settings } from "lucide-react";
@@ -24,6 +24,9 @@ export default function MeloloWatchPage() {
   const [showEpisodeList, setShowEpisodeList] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [selectedQuality, setSelectedQuality] = useState<VideoQuality | null>(null);
+  const holdRateRestoreRef = useRef<number>(1);
+  const holdStartTimeRef = useRef<number>(0);
+  const suppressNextClickRef = useRef<boolean>(false);
   
   // Internal state for videoId to prevent page unmount/remount on navigation
   const [currentVideoId, setCurrentVideoId] = useState(params.videoId || "");
@@ -132,6 +135,37 @@ export default function MeloloWatchPage() {
     }
   };
 
+  // Hold-to-speed control: keep 2x only while press is held.
+  const handleHoldStart = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    holdStartTimeRef.current = Date.now();
+    holdRateRestoreRef.current = video.playbackRate || 1;
+    video.playbackRate = 2;
+  }, []);
+
+  const handleHoldEnd = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Prevent click-after-hold from toggling play/pause.
+    const heldMs = Date.now() - holdStartTimeRef.current;
+    if (heldMs >= 150) {
+      suppressNextClickRef.current = true;
+    }
+
+    video.playbackRate = holdRateRestoreRef.current || 1;
+  }, []);
+
+  const handleVideoClickCapture = useCallback((e: MouseEvent<HTMLVideoElement>) => {
+    if (!suppressNextClickRef.current) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    suppressNextClickRef.current = false;
+  }, []);
+
   // Guard: If logic fails completely and we have no data after loading
   if (!detailLoading && !drama) {
     return (
@@ -218,6 +252,12 @@ export default function MeloloWatchPage() {
                 playsInline
                 onEnded={handleVideoEnded}
                 className="w-full h-full object-contain max-h-[100dvh]"
+                onPointerDown={handleHoldStart}
+                onPointerUp={handleHoldEnd}
+                onPointerLeave={handleHoldEnd}
+                onPointerCancel={handleHoldEnd}
+                onClickCapture={handleVideoClickCapture}
+                onContextMenu={(e) => e.preventDefault()}
               />
             ) : (
                 // Fallback while initializing first time quality
