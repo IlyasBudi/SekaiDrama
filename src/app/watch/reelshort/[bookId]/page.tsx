@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type MouseEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Loader2, AlertCircle, List, Settings } from "lucide-react";
 import Link from "next/link";
@@ -75,6 +75,9 @@ export default function ReelShortWatchPage() {
   const [selectedQuality, setSelectedQuality] = useState<string>("auto");
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const holdRateRestoreRef = useRef<number>(1);
+  const holdStartTimeRef = useRef<number>(0);
+  const suppressNextClickRef = useRef<boolean>(false);
 
   // Get episode from URL
   useEffect(() => {
@@ -182,6 +185,37 @@ export default function ReelShortWatchPage() {
       window.history.replaceState(null, '', `/watch/reelshort/${bookId}?ep=${nextEp}`);
     }
   }, [currentEpisode, detailData?.totalEpisodes, bookId]);
+
+  // Hold-to-speed control: keep 2x only while press is held.
+  const handleHoldStart = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    holdStartTimeRef.current = Date.now();
+    holdRateRestoreRef.current = video.playbackRate || 1;
+    video.playbackRate = 2;
+  }, []);
+
+  const handleHoldEnd = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Prevent click-after-hold from toggling play/pause.
+    const heldMs = Date.now() - holdStartTimeRef.current;
+    if (heldMs >= 150) {
+      suppressNextClickRef.current = true;
+    }
+
+    video.playbackRate = holdRateRestoreRef.current || 1;
+  }, []);
+
+  const handleVideoClickCapture = useCallback((e: MouseEvent<HTMLVideoElement>) => {
+    if (!suppressNextClickRef.current) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    suppressNextClickRef.current = false;
+  }, []);
 
   const goToEpisode = (ep: number) => {
     setCurrentEpisode(ep);
@@ -297,6 +331,12 @@ export default function ReelShortWatchPage() {
               playsInline
               autoPlay
               onEnded={handleVideoEnded}
+              onPointerDown={handleHoldStart}
+              onPointerUp={handleHoldEnd}
+              onPointerLeave={handleHoldEnd}
+              onPointerCancel={handleHoldEnd}
+              onClickCapture={handleVideoClickCapture}
+              onContextMenu={(e) => e.preventDefault()}
             />
          </div>
 

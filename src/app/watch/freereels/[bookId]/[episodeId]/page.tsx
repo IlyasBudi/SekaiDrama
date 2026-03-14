@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback, type MouseEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useFreeReelsDetail } from "@/hooks/useFreeReels";
 import { ChevronLeft, ChevronRight, Loader2, List, AlertCircle } from "lucide-react";
@@ -18,6 +18,9 @@ export default function FreeReelsWatchPage() {
   const [videoQuality, setVideoQuality] = useState<'h264' | 'h265'>('h264');
   const [useProxy, setUseProxy] = useState(true); // Default to true to avoid CORS issues
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const holdRateRestoreRef = useRef<number>(1);
+  const holdStartTimeRef = useRef<number>(0);
+  const suppressNextClickRef = useRef<boolean>(false);
 
   const { data, isLoading, error } = useFreeReelsDetail(bookId);
 
@@ -66,6 +69,36 @@ export default function FreeReelsWatchPage() {
       handleEpisodeChange(episodes[nextIndex].id, true);
     }
   };
+
+  // Hold-to-speed control: keep 2x only while press is held.
+  const handleHoldStart = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    holdStartTimeRef.current = Date.now();
+    holdRateRestoreRef.current = video.playbackRate || 1;
+    video.playbackRate = 2;
+  }, []);
+
+  const handleHoldEnd = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const heldMs = Date.now() - holdStartTimeRef.current;
+    if (heldMs >= 150) {
+      suppressNextClickRef.current = true;
+    }
+
+    video.playbackRate = holdRateRestoreRef.current || 1;
+  }, []);
+
+  const handleVideoClickCapture = useCallback((e: MouseEvent<HTMLVideoElement>) => {
+    if (!suppressNextClickRef.current) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    suppressNextClickRef.current = false;
+  }, []);
 
   if (isLoading) {
     return (
@@ -163,6 +196,12 @@ export default function FreeReelsWatchPage() {
                 onEnded={handleVideoEnded}
                 // @ts-ignore
                 referrerPolicy="no-referrer"
+                onPointerDown={handleHoldStart}
+                onPointerUp={handleHoldEnd}
+                onPointerLeave={handleHoldEnd}
+                onPointerCancel={handleHoldEnd}
+                onClickCapture={handleVideoClickCapture}
+                onContextMenu={(e) => e.preventDefault()}
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center z-20 flex-col gap-4">

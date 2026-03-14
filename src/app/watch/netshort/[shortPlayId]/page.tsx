@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type MouseEvent } from "react";
 import { useNetShortDetail } from "@/hooks/useNetShort";
 import { ChevronLeft, ChevronRight, Loader2, AlertCircle, List } from "lucide-react";
 import Link from "next/link";
@@ -17,6 +17,9 @@ export default function NetShortWatchPage() {
   const [showEpisodeList, setShowEpisodeList] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const holdRateRestoreRef = useRef<number>(1);
+  const holdStartTimeRef = useRef<number>(0);
+  const suppressNextClickRef = useRef<boolean>(false);
   
   // Debug log state (kept internal for now, can be exposed if needed)
   const [debugLog, setDebugLog] = useState<string[]>([]);
@@ -131,6 +134,38 @@ export default function NetShortWatchPage() {
   };
 
   const totalEpisodes = data?.totalEpisodes || 1;
+
+  // Hold-to-speed control: keep 2x only while press is held.
+  const handleHoldStart = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    holdStartTimeRef.current = Date.now();
+    holdRateRestoreRef.current = video.playbackRate || 1;
+    video.playbackRate = 2;
+  }, []);
+
+  const handleHoldEnd = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Browsers often emit click after pointerup; suppress it when this was a hold
+    // so releasing hold does not toggle play/pause.
+    const heldMs = Date.now() - holdStartTimeRef.current;
+    if (heldMs >= 150) {
+      suppressNextClickRef.current = true;
+    }
+
+    video.playbackRate = holdRateRestoreRef.current || 1;
+  }, []);
+
+  const handleVideoClickCapture = useCallback((e: MouseEvent<HTMLVideoElement>) => {
+    if (!suppressNextClickRef.current) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    suppressNextClickRef.current = false;
+  }, []);
 
   // Manual Subtitle Injection & Enforcement
   useEffect(() => {
@@ -287,6 +322,12 @@ export default function NetShortWatchPage() {
               crossOrigin="anonymous"
               {...({ disableRemotePlayback: true, referrerPolicy: "no-referrer" } as any)}
               onEnded={handleVideoEnded}
+              onPointerDown={handleHoldStart}
+              onPointerUp={handleHoldEnd}
+              onPointerLeave={handleHoldEnd}
+              onPointerCancel={handleHoldEnd}
+              onClickCapture={handleVideoClickCapture}
+              onContextMenu={(e) => e.preventDefault()}
             />
          </div>
 

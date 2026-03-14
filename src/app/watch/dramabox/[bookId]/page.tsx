@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback, type MouseEvent } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useDramaDetail, useEpisodes } from "@/hooks/useDramaDetail";
 import { ChevronLeft, ChevronRight, Loader2, Settings, List, AlertCircle } from "lucide-react";
@@ -32,6 +32,9 @@ export default function DramaBoxWatchPage() {
   const [quality, setQuality] = useState(720);
   const [showEpisodeList, setShowEpisodeList] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const holdRateRestoreRef = useRef<number>(1);
+  const holdStartTimeRef = useRef<number>(0);
+  const suppressNextClickRef = useRef<boolean>(false);
 
   const { data: detailData, isLoading: detailLoading } = useDramaDetail(bookId || "");
   const { data: episodes, isLoading: episodesLoading } = useEpisodes(bookId || "");
@@ -105,6 +108,37 @@ export default function DramaBoxWatchPage() {
       handleEpisodeChange(next, true);
     }
   };
+
+  // Hold-to-speed control: keep 2x only while press is held.
+  const handleHoldStart = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    holdStartTimeRef.current = Date.now();
+    holdRateRestoreRef.current = video.playbackRate || 1;
+    video.playbackRate = 2;
+  }, []);
+
+  const handleHoldEnd = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Prevent click-after-hold from toggling play/pause.
+    const heldMs = Date.now() - holdStartTimeRef.current;
+    if (heldMs >= 150) {
+      suppressNextClickRef.current = true;
+    }
+
+    video.playbackRate = holdRateRestoreRef.current || 1;
+  }, []);
+
+  const handleVideoClickCapture = useCallback((e: MouseEvent<HTMLVideoElement>) => {
+    if (!suppressNextClickRef.current) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    suppressNextClickRef.current = false;
+  }, []);
 
   // Handle both new and legacy API formats
   let book: { bookId: string; bookName: string } | null = null;
@@ -214,6 +248,12 @@ export default function DramaBoxWatchPage() {
                 onEnded={handleVideoEnded}
                 className="w-full h-full object-contain max-h-[100dvh]"
                 poster={currentEpisodeData.chapterImg}
+                onPointerDown={handleHoldStart}
+                onPointerUp={handleHoldEnd}
+                onPointerLeave={handleHoldEnd}
+                onPointerCancel={handleHoldEnd}
+                onClickCapture={handleVideoClickCapture}
+                onContextMenu={(e) => e.preventDefault()}
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center z-20">
